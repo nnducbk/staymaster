@@ -1,0 +1,83 @@
+{
+  "entities": {
+    "Property": {
+      "title": "Property",
+      "description": "A homestay property",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the homestay" },
+        "address": { "type": "string", "description": "Full address" },
+        "description": { "type": "string", "description": "Description of the property" },
+        "images": { "type": "array", "description": "List of image URLs" },
+        "type": { "type": "string", "description": "Type of property (e.g., Villa, Apartment, House)" },
+        "ownerId": { "type": "string", "description": "UID of the owner" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "address", "ownerId"]
+    },
+    "Room": {
+      "title": "Room",
+      "description": "A specific room or unit in a property",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string", "description": "Reference to the Property" },
+        "name": { "type": "string", "description": "Room name or number" },
+        "type": { "type": "string", "description": "Room type (e.g., Suite, Standard)" },
+        "pricePerNight": { "type": "number" },
+        "capacity": { "type": "integer" },
+        "amenities": { "type": "array" },
+        "status": { "type": "string", "enum": ["available", "occupied", "maintenance"] }
+      },
+      "required": ["propertyId", "name", "pricePerNight", "status"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A reservation for a room",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string" },
+        "roomId": { "type": "string" },
+        "guestName": { "type": "string" },
+        "guestEmail": { "type": "string" },
+        "guestPhone": { "type": "string" },
+        "checkIn": { "type": "string", "format": "date-time" },
+        "checkOut": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "checked-in", "checked-out", "cancelled"] },
+        "totalPrice": { "type": "number" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["propertyId", "roomId", "guestName", "checkIn", "checkOut", "status"]
+    },
+    "Guest": {
+      "title": "Guest",
+      "description": "Guest profile",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["name"]
+    }
+  },
+  "firestore": {
+    "properties": {
+      "schema": "Property",
+      "description": "Collection of homestay properties"
+    },
+    "properties/{propertyId}/rooms": {
+      "schema": "Room",
+      "description": "Rooms belonging to a specific property"
+    },
+    "bookings": {
+      "schema": "Booking",
+      "description": "Master collection of all bookings"
+    },
+    "guests": {
+      "schema": "Guest",
+      "description": "Global guest database"
+    }
+  }
+}

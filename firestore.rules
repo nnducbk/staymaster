@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(ownerId) {
+      return isSignedIn() && request.auth.uid == ownerId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Helpers ---
+
+    function isValidProperty(data) {
+      return data.keys().hasAll(['name', 'address', 'ownerId']) &&
+             data.keys().size() <= 10 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.address is string && data.address.size() <= 200 &&
+             data.ownerId == request.auth.uid;
+    }
+
+    function isValidRoom(data) {
+      return data.keys().hasAll(['propertyId', 'name', 'pricePerNight', 'status']) &&
+             data.keys().size() <= 10 &&
+             data.propertyId is string &&
+             data.name is string && data.name.size() <= 50 &&
+             data.pricePerNight is number && data.pricePerNight > 0 &&
+             data.status in ['available', 'occupied', 'maintenance'];
+    }
+
+    function isValidBooking(data) {
+      return data.keys().hasAll(['propertyId', 'roomId', 'guestName', 'checkIn', 'checkOut', 'status']) &&
+             data.keys().size() <= 15 &&
+             data.propertyId is string &&
+             data.roomId is string &&
+             data.guestName is string && data.guestName.size() <= 100 &&
+             data.status in ['pending', 'confirmed', 'checked-in', 'checked-out', 'cancelled'] &&
+             data.checkOut > data.checkIn;
+    }
+
+    // --- Collections ---
+
+    match /properties/{propertyId} {
+      allow get: if isSignedIn() && (isOwner(existing().ownerId) || exists(/databases/$(database)/documents/bookings/$(request.auth.uid))); // Broadened for simplicity if guests need to see property
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      
+      allow create: if isSignedIn() && isValidProperty(incoming());
+      allow update: if isSignedIn() && isOwner(existing().ownerId) && isValidProperty(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'address', 'description', 'images', 'type'])
+      );
+      allow delete: if isSignedIn() && isOwner(existing().ownerId);
+
+      match /rooms/{roomId} {
+        allow read: if isSignedIn(); // Guests and owners can read room info
+        allow create: if isSignedIn() && get(/databases/$(database)/documents/properties/$(propertyId)).data.ownerId == request.auth.uid && isValidRoom(incoming());
+        allow update: if isSignedIn() && get(/databases/$(database)/documents/properties/$(propertyId)).data.ownerId == request.auth.uid && isValidRoom(incoming()) && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'type', 'pricePerNight', 'capacity', 'amenities', 'status'])
+        );
+        allow delete: if isSignedIn() && get(/databases/$(database)/documents/properties/$(propertyId)).data.ownerId == request.auth.uid;
+      }
+    }
+
+    match /bookings/{bookingId} {
+      // Owners can see bookings for their properties
+      // Hardened: check property ownership via cross-document lookup
+      function canAccessBooking(bookingData) {
+        return get(/databases/$(database)/documents/properties/$(bookingData.propertyId)).data.ownerId == request.auth.uid;
+      }
+
+      allow get: if isSignedIn() && canAccessBooking(existing());
+      allow list: if isSignedIn() && canAccessBooking(resource.data);
+
+      allow create: if isSignedIn() && isValidBooking(incoming());
+      allow update: if isSignedIn() && canAccessBooking(existing()) && isValidBooking(incoming()) && (
+        // Prevent changing immutable fields
+        incoming().propertyId == existing().propertyId &&
+        incoming().roomId == existing().roomId &&
+        // Allow status updates
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes', 'totalPrice', 'checkIn', 'checkOut'])
+      );
+      allow delete: if isSignedIn() && canAccessBooking(existing());
+    }
+
+    match /guests/{guestId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn(); // Simplified for now, in production would restrict to staff/owner
+    }
+  }
+}
